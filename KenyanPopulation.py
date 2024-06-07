@@ -226,7 +226,7 @@ with col[2]:
 
     with st.expander('About', expanded=True):
         st.write('''
-            - Data: [Kenyan Census Bureau](https://www.census.gov/data/datasets/time-series/demo/popest/2010s-state-total.html).
+            - Data: [Kenyan National Bureau Of Statistics](https://www.knbs.or.ke/kenya-population-and-housing-census-results/.html).
             - :orange[**Gains/Losses**]: counties with high inbound/ outbound migration for selected year
             - :orange[**Counties Migration**]: percentage of counties with annual inbound/ outbound migration > 50,000
             ''')
