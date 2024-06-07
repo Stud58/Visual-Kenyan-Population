@@ -3,7 +3,7 @@
 
  attrs==23.2.0
 
- blinker==1.8.2[2024-06-07 08:01:52.150979] 
+ blinker==1.8.2 
  
  cachetools==5.3.3
 
@@ -53,7 +53,7 @@
 
  pytz==2024.1
 
- referencing[2024-06-07 08:01:52.151182] ==0.35.1
+ referencing==0.35.1
 
  requests==2.32.3
 
@@ -77,7 +77,7 @@
 
  typing-extensions==4.12.1
 
- [2024-06-07 08:01:52.151341] tzdata==2024.1
+ tzdata==2024.1
 
  urllib3==2.2.1
 
