@@ -30,7 +30,7 @@ except FileNotFoundError:
 
 # Sidebar
 with st.sidebar:
-    st.title("Kenyan Counties Population")
+    st.title("🇰🇪Kenyan Counties Population")
 
     year_list = list(df_reshaped.year.unique())[::-1]
 
