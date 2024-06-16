@@ -7,7 +7,7 @@ import json
 # Page configuration
 st.set_page_config(
     page_title="Kenyan Counties Population",
-    page_icon="📈",
+    page_icon="kenyan.png",
     layout="wide",
     initial_sidebar_state="expanded")
 
@@ -30,7 +30,7 @@ except FileNotFoundError:
 
 # Sidebar
 with st.sidebar:
-    st.title('📈 Kenyan Counties Population')
+    st.title("Kenyan Counties Population")
 
     year_list = list(df_reshaped.year.unique())[::-1]
 
