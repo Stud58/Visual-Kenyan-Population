@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import plotly.express as px
+import json
 
 # Page configuration
 st.set_page_config(
@@ -17,6 +18,14 @@ try:
     df_reshaped = pd.read_csv('Mydata.csv')
 except FileNotFoundError:
     st.error("The file 'Mydata.csv' is not found.")
+    raise
+
+# Load GeoJSON data
+try:
+    with open('gadm41_KEN_1.geojson') as f:
+        kenya_geojson = json.load(f)
+except FileNotFoundError:
+    st.error("The file 'gadm41_KEN_1.geojson' is not found.")
     raise
 
 # Sidebar
@@ -35,35 +44,29 @@ with st.sidebar:
 
 
 # Plots
-
-# Heatmap
 def make_heatmap(input_df, input_y, input_x, input_color, input_color_theme):
     heatmap = alt.Chart(input_df).mark_rect().encode(
         y=alt.Y(f'{input_y}:O',
                 axis=alt.Axis(title="Year", titleFontSize=18, titlePadding=15, titleFontWeight=900, labelAngle=0)),
         x=alt.X(f'{input_x}:O', axis=alt.Axis(title="", titleFontSize=18, titlePadding=15, titleFontWeight=900)),
-        color=alt.Color(f'max({input_color}):Q',
-                        legend=None,
-                        scale=alt.Scale(scheme=input_color_theme)),
+        color=alt.Color(f'max({input_color}):Q', legend=None, scale=alt.Scale(scheme=input_color_theme)),
         stroke=alt.value('black'),
         strokeWidth=alt.value(0.25),
-    ).properties(width=900
-                 ).configure_axis(
+    ).properties(width=900).configure_axis(
         labelFontSize=12,
         titleFontSize=12
     )
-    # height=300
     return heatmap
 
 
-# Choropleth map
-def make_choropleth(input_df, input_id, input_column, input_color_theme):
-    choropleth = px.choropleth(input_df, locations=input_id, color=input_column, locationmode="USA-states",
+def make_choropleth(input_df, input_id, input_column, input_color_theme, geojson):
+    choropleth = px.choropleth(input_df, geojson=geojson, locations=input_id, featureidkey="properties.id",
+                               color=input_column,
                                color_continuous_scale=input_color_theme,
                                range_color=(0, max(df_selected_year.population)),
-                               scope="usa",
-                               labels={'population': 'Population'}
-                               )
+                               labels={'population': 'Population'},
+                               scope="africa")
+    choropleth.update_geos(fitbounds="locations", visible=False)
     choropleth.update_layout(
         template='plotly_dark',
         plot_bgcolor='rgba(0, 0, 0, 0)',
@@ -74,17 +77,13 @@ def make_choropleth(input_df, input_id, input_column, input_color_theme):
     return choropleth
 
 
-# Donut chart
 def make_donut(input_response, input_text, input_color):
-    global chart_color
-    if input_color == 'blue':
-        chart_color = ['#29b5e8', '#155F7A']
-    if input_color == 'green':
-        chart_color = ['#27AE60', '#12783D']
-    if input_color == 'orange':
-        chart_color = ['#F39C12', '#875A12']
-    if input_color == 'red':
-        chart_color = ['#E74C3C', '#781F16']
+    chart_color = {
+        'blue': ['#29b5e8', '#155F7A'],
+        'green': ['#27AE60', '#12783D'],
+        'orange': ['#F39C12', '#875A12'],
+        'red': ['#E74C3C', '#781F16']
+    }[input_color]
 
     source = pd.DataFrame({
         "Topic": ['', input_text],
@@ -97,30 +96,18 @@ def make_donut(input_response, input_text, input_color):
 
     plot = alt.Chart(source).mark_arc(innerRadius=45, cornerRadius=25).encode(
         theta="% value",
-        color=alt.Color("Topic:N",
-                        scale=alt.Scale(
-                            # domain=['A', 'B'],
-                            domain=[input_text, ''],
-                            # range=['#29b5e8', '#155F7A']),  # 31333F
-                            range=chart_color),
-                        legend=None),
+        color=alt.Color("Topic:N", scale=alt.Scale(domain=[input_text, ''], range=chart_color), legend=None),
     ).properties(width=130, height=130)
 
     text = plot.mark_text(align='center', color="#29b5e8", font="Lato", fontSize=32, fontWeight=700,
                           fontStyle="italic").encode(text=alt.value(f'{input_response} %'))
     plot_bg = alt.Chart(source_bg).mark_arc(innerRadius=45, cornerRadius=20).encode(
         theta="% value",
-        color=alt.Color("Topic:N",
-                        scale=alt.Scale(
-                            # domain=['A', 'B'],
-                            domain=[input_text, ''],
-                            range=chart_color),  # 31333F
-                        legend=None),
+        color=alt.Color("Topic:N", scale=alt.Scale(domain=[input_text, ''], range=chart_color), legend=None),
     ).properties(width=130, height=130)
     return plot_bg + plot + text
 
 
-# Convert population to text
 def format_number(num):
     if num > 1000000:
         if not num % 1000000:
@@ -129,13 +116,12 @@ def format_number(num):
     return f'{num // 1000} K'
 
 
-# Calculation year-over-year population migrations
 def calculate_population_difference(input_df, input_year):
     selected_year_data = input_df[input_df['year'] == input_year].reset_index()
     previous_year_data = input_df[input_df['year'] == input_year - 1].reset_index()
     selected_year_data['population_difference'] = selected_year_data.population.sub(previous_year_data.population,
                                                                                     fill_value=0)
-    return pd.concat([selected_year_data.states, selected_year_data.id, selected_year_data.population,
+    return pd.concat([selected_year_data.counties, selected_year_data.id, selected_year_data.population,
                       selected_year_data.population_difference], axis=1).sort_values(by="population_difference",
                                                                                      ascending=False)
 
@@ -149,45 +135,42 @@ with col[0]:
     df_population_difference_sorted = calculate_population_difference(df_reshaped, selected_year)
 
     if selected_year > 2010:
-        first_state_name = df_population_difference_sorted.states.iloc[0]
-        first_state_population = format_number(df_population_difference_sorted.population.iloc[0])
-        first_state_delta = format_number(df_population_difference_sorted.population_difference.iloc[0])
+        first_county_name = df_population_difference_sorted.counties.iloc[0]
+        first_county_population = format_number(df_population_difference_sorted.population.iloc[0])
+        first_county_delta = format_number(df_population_difference_sorted.population_difference.iloc[0])
     else:
-        first_state_name = '-'
-        first_state_population = '-'
-        first_state_delta = ''
-    st.metric(label=first_state_name, value=first_state_population, delta=first_state_delta)
+        first_county_name = '-'
+        first_county_population = '-'
+        first_county_delta = ''
+    st.metric(label=first_county_name, value=first_county_population, delta=first_county_delta)
 
     if selected_year > 2010:
-        last_state_name = df_population_difference_sorted.states.iloc[-1]
-        last_state_population = format_number(df_population_difference_sorted.population.iloc[-1])
-        last_state_delta = format_number(df_population_difference_sorted.population_difference.iloc[-1])
+        last_county_name = df_population_difference_sorted.counties.iloc[-1]
+        last_county_population = format_number(df_population_difference_sorted.population.iloc[-1])
+        last_county_delta = format_number(df_population_difference_sorted.population_difference.iloc[-1])
     else:
-        last_state_name = '-'
-        last_state_population = '-'
-        last_state_delta = ''
-    st.metric(label=last_state_name, value=last_state_population, delta=last_state_delta)
+        last_county_name = '-'
+        last_county_population = '-'
+        last_county_delta = ''
+    st.metric(label=last_county_name, value=last_county_population, delta=last_county_delta)
 
     st.markdown('#### Counties Migration')
 
     if selected_year > 2010:
-        # Filter states with population difference > 50000
-        # df_greater_50000 = df_population_difference_sorted[df_population_difference_sorted.population_difference_absolute > 50000]
         df_greater_50000 = df_population_difference_sorted[
             df_population_difference_sorted.population_difference > 50000]
         df_less_50000 = df_population_difference_sorted[df_population_difference_sorted.population_difference < -50000]
 
-        # % of States with population difference > 50000
-        states_migration_greater = round(
-            (len(df_greater_50000) / df_population_difference_sorted.states.nunique()) * 100)
-        states_migration_less = round((len(df_less_50000) / df_population_difference_sorted.states.nunique()) * 100)
-        donut_chart_greater = make_donut(states_migration_greater, 'Inbound Migration', 'green')
-        donut_chart_less = make_donut(states_migration_less, 'Outbound Migration', 'red')
+        countries_migration_greater = round(
+            (len(df_greater_50000) / df_population_difference_sorted.counties.nunique()) * 100)
+        countries_migration_less = round((len(df_less_50000) / df_population_difference_sorted.counties.nunique()) * 100)
+        donut_chart_greater = make_donut(countries_migration_greater, 'Inbound Migration', 'green')
+        donut_chart_less = make_donut(countries_migration_less, 'Outbound Migration', 'red')
     else:
-        states_migration_greater = 0
-        states_migration_less = 0
-        donut_chart_greater = make_donut(states_migration_greater, 'Inbound Migration', 'green')
-        donut_chart_less = make_donut(states_migration_less, 'Outbound Migration', 'red')
+        countries_migration_greater = 0
+        countries_migration_less = 0
+        donut_chart_greater = make_donut(countries_migration_greater, 'Inbound Migration', 'green')
+        donut_chart_less = make_donut(countries_migration_less, 'Outbound Migration', 'red')
 
     migrations_col = st.columns((0.2, 1, 0.2))
     with migrations_col[1]:
@@ -199,34 +182,28 @@ with col[0]:
 with col[1]:
     st.markdown('#### Total Population')
 
-    choropleth = make_choropleth(df_selected_year, 'states_code', 'population', selected_color_theme)
+    choropleth = make_choropleth(df_selected_year, 'id', 'population', selected_color_theme, kenya_geojson)
     st.plotly_chart(choropleth, use_container_width=True)
 
-    heatmap = make_heatmap(df_reshaped, 'year', 'states', 'population', selected_color_theme)
+    heatmap = make_heatmap(df_reshaped, 'year', 'counties', 'population', selected_color_theme)
     st.altair_chart(heatmap, use_container_width=True)
 
 with col[2]:
     st.markdown('#### Top Counties')
 
     st.dataframe(df_selected_year_sorted,
-                 column_order=("states", "population"),
+                 column_order=("counties", "population"),
                  hide_index=True,
                  width=None,
                  column_config={
-                     "states": st.column_config.TextColumn(
-                         "States",
-                     ),
-                     "population": st.column_config.ProgressColumn(
-                         "Population",
-                         format="%f",
-                         min_value=0,
-                         max_value=max(df_selected_year_sorted.population),
-                     )}
+                     "counties": st.column_config.TextColumn("Counties"),
+                     "population": st.column_config.ProgressColumn("Population", format="%f", min_value=0,
+                                                                   max_value=max(df_selected_year_sorted.population))}
                  )
 
     with st.expander('About', expanded=True):
         st.write('''
-            - Data: [Kenyan National Bureau Of Statistics](https://www.knbs.or.ke/kenya-population-and-housing-census-results/.html).
-            - :orange[**Gains/Losses**]: counties with high inbound/ outbound migration for selected year
-            - :orange[**Counties Migration**]: percentage of counties with annual inbound/ outbound migration > 50,000
+            - Data: [Kenyan National Bureau Of Statistics](https://www.knbs.or.ke/dataset.html).
+            - :blue[**Gains/Losses**]: counties with high inbound/ outbound migration for selected year
+            - :blue[**Counties Migration**]: percentage of counties with annual inbound/ outbound migration > 50,000
             ''')
